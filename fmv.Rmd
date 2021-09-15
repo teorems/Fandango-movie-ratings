@@ -1,0 +1,175 @@
+---
+title: "Fandango movie ratings"
+author: "Emmanuel Messori"
+date: "15/09/2021"
+output:
+  pdf_document: 
+    df_print: kable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message = FALSE)
+```
+
+## Point of departure
+
+In October 2015, data journalist Dave Hickey analysed data from film reviews coming from the website [](http://Fandango.com). In his analysis he states :
+
+>Of the 437 films with at least one review, 98 percent had a 3-star rating or higher and 75 percent had a 4-star rating or higher.
+>
+It seemed nearly impossible for a movie to fail by Fandango’s standards.
+>
+When I focused on movies that had 308 or more user reviews,9 none of the 209 films had below a 3-star rating. Seventy-eight percent had a rating of 4 stars or higher.
+                           
+[link to his article](https://fivethirtyeight.com/features/fandango-movies-ratings/)
+
+In comparing Fandango's scores to the most popular competitors' website he found out that most of the times they were higher.
+
+Eventually he illustrated a huge discrepancy between the rating displayed in the page html code and the rating actually displayed, caused by rounding up to the nearest half star (e.g. a rating of 4.1 would be rounded to 4.5)
+
+Fandango's officials replied that the biased rounding off was caused by a bug in their system rather than being intentional, and they promised to fix the bug as soon as possible. Presumably, this has already happened.
+
+Nowadays the rating displayed are coming from the site [](http://rottentomatoes.com) (which by the way was [purchased by Fandango](https://gizmodo.com/fandango-will-probably-ruin-rotten-tomatoes-1759743925))
+
+In this project, we'll analyze more recent movie ratings data(2016-2017) to determine whether there has been any change in Fandango's rating system after Hickey's analysis.
+
+## Retrieving the data
+
+```{r}
+library(tidyverse)
+old_data <- read_csv("https://raw.githubusercontent.com/mircealex/Movie_ratings_2016_17/master/fandango_score_comparison.csv")
+new_data <- read_csv("https://raw.githubusercontent.com/mircealex/Movie_ratings_2016_17/master/movie_ratings_16_17.csv")
+```
+
+We're going to focus on the columns of the two datasets that offer information about Fandango's ratings.
+
+```{r}
+old_data %>% 
+  select(FILM, Fandango_Stars, Fandango_Ratingvalue, Fandango_votes, Fandango_Difference) -> old_data_filtered
+new_data %>% 
+  select(movie, year, fandango) -> new_data_filtered
+```
+
+
+## Purposive Sampling
+
+Our population of interest was made in theory by all the movies present in the database in the years 2016-2017. But we are not working with random samples here, since ``fandango_score_comparison.csv` (Hickey's data):
+
+>contains every film that has a Rotten Tomatoes rating, a RT User rating, a Metacritic score, a Metacritic User score, and IMDb score, and at least 30 fan reviews on Fandango
+>
+[](https://github.com/fivethirtyeight/data/blob/master/fandango/README.md)
+
+and `movie_ratings_16_17.csv`
+
+> contains movie ratings data for 214 of the most popular movies (with a significant number of votes) released in 2016 and 2017. 
+
+[](https://github.com/mircealex/Movie_ratings_2016_17/blob/master/README.md)
+
+
+## New analysis goal
+
+The initial goal of our analysis would be to compare to samples of movies of the Fandango website, one which comprises films released just before Hickey's analysis and another more recent one, to see whether there has been a change in the rating system. 
+
+Since the samples are not representative of all the movies in the database regardless of the releasing year, we will consider the samples to be representative at least of the most popular movies. Our objective is now to check whether there's any difference  in Fandango's ratings for popular movies in 2015 and Fandango's ratings for popular movies in 2016-2017.
+
+The term "popular" is vague and we need to define it with precision before continuing. Let's see if we can use Hickey's benchmark of 30 fan ratings and consider a movie as "popular" only if it has 30 fan ratings or more on Fandango's website.
+
+## Checking the samples
+
+The `old_data` dataset which contains Hickey's selection, as stated in the description contains movies which have at least 30 reviews (information we can check on the data):
+
+```{r}
+summary(old_data$Fandango_votes)
+```
+
+There are at least 35 reviews.
+
+To see if the new sample is still representative for the new analysis question, we should check whether these movies have at least 30 reviews (like for Hickey's data). But since Fandango has since abandoned the fan rating system, we could compare for example the number of ratings present on the Rotten Tomatoes site. But, again, since the user base is different  we cannot really say with confidence whether these review numbers are comparable to the Fandango fan ratings. We'll just content ourselves for now to make the assumption that the sample is representative.
+
+-----
+
+We'll filter the data to focus just on the films released in 2015 and 2016.
+
+```{r}
+old_data_filtered %>% 
+  separate(FILM, c("title", "year"), sep =  "\\(") %>% 
+  mutate(year = parse_number(year)) %>% 
+  filter(year==2015) -> movies2015
+head(movies2015)
+
+new_data_filtered %>% 
+  filter(year == 2016) -> movies2016
+head(movies2016)
+
+```
+
+
+## Distribution comparison
+
+Let's now compare the two rating distributions with density kernel plots. For the 2015 movies, we'll use the `Fandango_Stars` variable, containing the official rating:
+
+```{r}
+movies2015 %>% 
+  select (1:3) %>%
+  rename(movie = title, fandango = Fandango_Stars) %>% 
+  bind_rows(movies2016) -> all_movies
+
+  ggplot(all_movies, aes(fandango, color = factor(year))) +
+  geom_density() +
+  theme_minimal() +
+  labs(title="Comparing rating distributions between 2015 and 2016",
+       x="Stars", y="Density") +
+  scale_x_continuous(breaks = seq(0,5,0.5), limits = c(0,5))
+  
+```
+
+Though both distributions are left skewed, the 2016 distribution shows an evident shift toward the left. It seems that the 2016 movies are lower rated. The min value is 2.5, and peak density is at 4 (the rating from 2015 peak at 4.5).
+
+## Frequency Tables
+
+```{r}
+count(movies2015, Fandango_Stars) %>%
+  mutate(prop = round(n / sum(n) * 100, 2))
+```
+
+```{r}
+count(movies2016, fandango) %>%
+  mutate(prop = round(n / sum(n) * 100, 2))
+```
+
+The difference between the two distributions is less evident through the frequency tables: though 2015 rating have higher percentages for the highest ratings(4.5 and 5), 2016 movies have a higher proportion of entries in the mid range (4.0).
+
+
+## Studying the tendency
+
+The 2016 mean rating is ~ 0.2 stars lower than in 2015.
+
+```{r}
+  ggplot(all_movies, aes(factor(year), fandango, color = factor(year))) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title="Comparing rating distributions between 2015 and 2016",
+       x="Year", y="Stars") +
+  scale_y_continuous(breaks = seq(0,5,0.5)) +
+  stat_summary(fun=mean)
+```
+
+The two distributions have the same median but the 2016 has (as already mentioned) a lower mean and also lower 75th quartile:
+
+```{r}
+print(summary(movies2015$Fandango_Stars))
+```
+
+```{r}
+print(summary(movies2016$fandango))
+```
+
+Finally we can use a t.test to confirm that this difference in means is statistically significant:
+
+```{r}
+t.test(fandango ~ year, data=all_movies)
+```
+
+## End notes
+
+With a very low p-value there is little chance that this difference is random. So indeed there has been a slight decrease in the mean ratings between 2015 and 2016. Maybe Fandango has really fixed the rating system after all.
